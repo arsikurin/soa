@@ -1,0 +1,9 @@
+*
+!go.mod
+!go.sum
+!cmd/
+!cmd/catalog/
+!cmd/catalog/*.go
+!internal/
+!internal/api/
+!internal/api/*.go

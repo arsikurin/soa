@@ -1,0 +1,8 @@
+.DS_Store
+bin/
+coverage.out
+.superpowers/
+docs/architecture/.structurizr/
+docs/architecture/workspace.json*
+/docs/local/
+/docs/superpowers/

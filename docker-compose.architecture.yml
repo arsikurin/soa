@@ -1,0 +1,10 @@
+name: marketplace-architecture
+
+services:
+  structurizr:
+    image: structurizr/structurizr:2026.09.19-playwright
+    command: ["local"]
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ./docs/architecture:/usr/local/structurizr
