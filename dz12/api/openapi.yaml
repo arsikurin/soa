@@ -1,0 +1,29 @@
+openapi: 3.1.0
+info:
+  title: Catalog Service
+  version: 1.0.0
+  description: Technical health endpoint only.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Check HTTP process health
+      description: HEAD is also supported by the router and returns the same headers without a body.
+      responses:
+        '200':
+          description: The HTTP process is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+components:
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [ok]
