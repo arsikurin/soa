@@ -6,3 +6,8 @@ docs/architecture/.structurizr/
 docs/architecture/workspace.json*
 /docs/local/
 /docs/superpowers/
+/internal/api/oas_*_gen.go
+.env
+__pycache__/
+*.pyc
+/internal/rpc/pb/

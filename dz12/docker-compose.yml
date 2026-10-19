@@ -1,13 +1,158 @@
 name: marketplace-homework
 
+x-app: &app
+  image: marketplace-services:local
+  build: .
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  stop_grace_period: 15s
+
 services:
-  catalog:
+  certificates:
+    image: marketplace-services:local
     build: .
-    ports:
-      - "127.0.0.1:${CATALOG_PORT:-8080}:8080"
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    stop_grace_period: 10s
+    user: "0:0"
+    environment: {SERVICE_ROLE: certificates}
+    volumes:
+      - gateway-tls:/certs/gateway
+      - users-tls:/certs/users
+      - catalog-tls:/certs/catalog
+      - orders-tls:/certs/orders
+    healthcheck: {disable: true}
+
+  users-db:
+    image: postgres:18
+    environment: {POSTGRES_DB: users, POSTGRES_USER: users, POSTGRES_PASSWORD: users}
+    ports: ["127.0.0.1:${USERS_POSTGRES_PORT:-5433}:5432"]
+    volumes: [users-data:/var/lib/postgresql]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U users -d users"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  users-migrate:
+    image: redgate/flyway:13.10.0
+    platform: linux/amd64
+    depends_on: {users-db: {condition: service_healthy}}
+    environment:
+      FLYWAY_URL: jdbc:postgresql://users-db:5432/users
+      FLYWAY_USER: users
+      FLYWAY_PASSWORD: users
+      FLYWAY_CONNECT_RETRIES: 30
+      FLYWAY_CLEAN_DISABLED: "true"
+    volumes: ["./migrations/users:/flyway/sql:ro"]
+    command: [migrate]
+
+  users:
+    <<: *app
+    environment:
+      SERVICE_ROLE: users
+      DATABASE_URL: postgres://users:users@users-db:5432/users?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-homework-development-jwt-secret-at-least-32-characters}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-Homework-Admin-Password-2026!}
+    volumes: [users-tls:/tls:ro]
+    depends_on:
+      certificates: {condition: service_completed_successfully}
+      users-db: {condition: service_healthy}
+      users-migrate: {condition: service_completed_successfully}
+
+  catalog-db:
+    image: postgres:18
+    command: [postgres, -c, max_prepared_transactions=100]
+    environment: {POSTGRES_DB: catalog, POSTGRES_USER: catalog, POSTGRES_PASSWORD: catalog}
+    ports: ["127.0.0.1:${CATALOG_POSTGRES_PORT:-5434}:5432"]
+    volumes: [catalog-data:/var/lib/postgresql]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U catalog -d catalog"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  catalog-migrate:
+    image: redgate/flyway:13.10.0
+    platform: linux/amd64
+    depends_on: {catalog-db: {condition: service_healthy}}
+    environment:
+      FLYWAY_URL: jdbc:postgresql://catalog-db:5432/catalog
+      FLYWAY_USER: catalog
+      FLYWAY_PASSWORD: catalog
+      FLYWAY_CONNECT_RETRIES: 30
+      FLYWAY_CLEAN_DISABLED: "true"
+    volumes: ["./migrations/catalog:/flyway/sql:ro"]
+    command: [migrate]
+
+  catalog:
+    <<: *app
+    environment:
+      SERVICE_ROLE: catalog
+      DATABASE_URL: postgres://catalog:catalog@catalog-db:5432/catalog?sslmode=disable
+    volumes: [catalog-tls:/tls:ro]
+    depends_on:
+      certificates: {condition: service_completed_successfully}
+      catalog-db: {condition: service_healthy}
+      catalog-migrate: {condition: service_completed_successfully}
+      users: {condition: service_healthy}
+
+  orders-db:
+    image: postgres:18
+    command: [postgres, -c, max_prepared_transactions=100]
+    environment: {POSTGRES_DB: orders, POSTGRES_USER: orders, POSTGRES_PASSWORD: orders}
+    ports: ["127.0.0.1:${ORDERS_POSTGRES_PORT:-5435}:5432"]
+    volumes: [orders-data:/var/lib/postgresql]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U orders -d orders"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  orders-migrate:
+    image: redgate/flyway:13.10.0
+    platform: linux/amd64
+    depends_on: {orders-db: {condition: service_healthy}}
+    environment:
+      FLYWAY_URL: jdbc:postgresql://orders-db:5432/orders
+      FLYWAY_USER: orders
+      FLYWAY_PASSWORD: orders
+      FLYWAY_CONNECT_RETRIES: 30
+      FLYWAY_CLEAN_DISABLED: "true"
+    volumes: ["./migrations/orders:/flyway/sql:ro"]
+    command: [migrate]
+
+  orders:
+    <<: *app
+    environment:
+      SERVICE_ROLE: orders
+      DATABASE_URL: postgres://orders:orders@orders-db:5432/orders?sslmode=disable
+      ORDER_RATE_LIMIT_MINUTES: ${ORDER_RATE_LIMIT_MINUTES:-1}
+    volumes: [orders-tls:/tls:ro]
+    depends_on:
+      certificates: {condition: service_completed_successfully}
+      orders-db: {condition: service_healthy}
+      orders-migrate: {condition: service_completed_successfully}
+      catalog: {condition: service_healthy}
+
+  gateway:
+    <<: *app
+    environment:
+      SERVICE_ROLE: gateway
+      JWT_SECRET: ${JWT_SECRET:-homework-development-jwt-secret-at-least-32-characters}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS-http://localhost:8082,http://127.0.0.1:8082,http://localhost:63342,http://127.0.0.1:63342}
+    volumes: [gateway-tls:/tls:ro]
+    ports: ["127.0.0.1:${MARKETPLACE_PORT:-8080}:8080"]
+    depends_on:
+      certificates: {condition: service_completed_successfully}
+      users: {condition: service_healthy}
+      catalog: {condition: service_healthy}
+      orders: {condition: service_healthy}
+
+volumes:
+  users-data:
+  catalog-data:
+  orders-data:
+  gateway-tls:
+  users-tls:
+  catalog-tls:
+  orders-tls:

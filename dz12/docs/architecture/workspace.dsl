@@ -1,130 +1,84 @@
-workspace "Маркетплейс" "Каталог, заказы, платежи и уведомления." {
+workspace "Marketplace API — ДЗ 2" "Gateway, три доменных сервиса и отдельные базы; Orders и Catalog согласуют заказ через 2PC." {
     !impliedRelationships false
-
     model {
-        buyer = person "Покупатель" "Выбирает товары, оформляет и оплачивает заказы."
-        seller = person "Продавец" "Управляет своими товарами и исполнением заказов."
-
-        email = softwareSystem "Email-провайдер" "Принимает запросы на доставку писем." {
-            tags "External"
-        }
-        psp = softwareSystem "Платежный провайдер" "Страница оплаты, обработка платежей и отправка результата." {
-            tags "External"
-        }
-
-        marketplace = softwareSystem "Маркетплейс" "Каталог, персональная лента, пользователи, заказы, платежи и уведомления." {
-            web = container "Web SPA" "Витрина, профиль, заказы и кабинет продавца." "React / TypeScript"
-            users = container "Users Service" "Аккаунты, роли, контакты, предпочтения и согласия." "Go / HTTP API"
-            catalog = container "Catalog Service" "Карточки, цены, доступность и персональная лента." "Go / HTTP API"
-            orders = container "Orders Service" "Снимок покупки, итог и жизненный цикл заказа." "Go / HTTP API + worker"
-            payments = container "Payments Service" "Расчет суммы платежа, попытки, учет и сверка." "Go / HTTP API + worker"
-            notifications = container "Notifications Service" "Письма о статусах заказа, повторы и учет доставки." "Go / worker"
-
-            users_db = container "Users DB" "Аккаунты, роли, email, интересы и согласия. Владелец: Users Service." "PostgreSQL" {
+        buyer = person "Покупатель" "Читает каталог и управляет своими заказами."
+        seller = person "Продавец" "Управляет своими товарами и создаёт промокоды."
+        admin = person "Администратор" "Управляет товарами и заказами всех пользователей."
+        marketplace = softwareSystem "Marketplace" "Контрактный API маркетплейса." {
+            gateway = container "API Gateway" "Маршруты и валидация OpenAPI, JWT, ошибки и JSON-логи. Своей БД нет." "Go / ogen"
+            users = container "Users" "Регистрация, bcrypt, access JWT и ротация refresh token." "Go / gRPC"
+            catalog = container "Catalog" "Товары и остатки. Участник 2PC: резервирование, prepare и исполнение решения." "Go / gRPC / pgx"
+            orders = container "Orders" "Заказы и промокоды. Координатор 2PC с долговечным решением и периодическим recovery." "Go / gRPC / pgx" {
+                business = component "Заказы и промокоды" "Права, состояния, снимки цен, скидки и лимиты операций." "Go / decimal"
+                coordinator = component "Координатор 2PC" "Журналирует операцию; готовит обоих участников; сохраняет COMMIT или ABORT и завершает их." "Go / pgx"
+                recovery = component "Восстановление" "При запуске и периодически завершает решения; откатывает брошенные PREPARING под session lock." "Go"
+            }
+            usersDB = container "Users DB" "users, refresh_tokens." "PostgreSQL 18" {
                 tags "Database"
             }
-            catalog_db = container "Catalog DB" "Товары, категории, продавцы, цены и доступность. Владелец: Catalog Service." "PostgreSQL" {
+            catalogDB = container "Catalog DB" "products, reservation_journal, reservation_receipts; prepared transactions." "PostgreSQL 18" {
                 tags "Database"
             }
-            orders_db = container "Orders DB" "Заказы, снимки цен, статусы, ссылка оплаты, события, outbox/inbox. Владелец: Orders Service." "PostgreSQL" {
-                tags "Database"
-            }
-            payments_db = container "Payments DB" "Попытки, суммы, результаты, журнал, outbox/inbox. Владелец: Payments Service." "PostgreSQL" {
-                tags "Database"
-            }
-            notifications_db = container "Notifications DB" "Задания, шаблоны, попытки, доставка, дедупликация. Владелец: Notifications Service." "PostgreSQL" {
+            ordersDB = container "Orders DB" "orders, order_items, promo_codes, user_operations; журнал и квитанции 2PC." "PostgreSQL 18" {
                 tags "Database"
             }
         }
-
-        buyer -> web "Покупает через браузер" "HTTPS"
-        seller -> web "Работает в кабинете" "HTTPS"
-        web -> users "Вход, профиль и настройки" "HTTPS/JSON, синхронно"
-        web -> catalog "Лента и управление товарами" "HTTPS/JSON, синхронно"
-        web -> orders "Создание и статус заказа; получение ссылки оплаты" "HTTPS/JSON, синхронно"
-        catalog -> users "Запрашивает любимые категории" "HTTPS/JSON, синхронно"
-        orders -> catalog "Получает снимок товаров и цен" "HTTPS/JSON, синхронно"
-        orders -> notifications "OrderStatusChanged; очередь notifications.order-status" "AMQP 0-9-1 через RabbitMQ" {
-            tags "Async"
-        }
-        orders -> orders_db "Читает и пишет собственные данные" "PostgreSQL/TCP" {
-            tags "DataAccess"
-        }
-        orders -> payments "Создает оплату, получает URL; Idempotency-Key: order_id" "HTTPS/JSON, синхронно"
-        notifications -> users "Получает email и согласие" "HTTPS/JSON, синхронно"
-
-        users -> users_db "Читает и пишет собственные данные" "PostgreSQL/TCP" {
-            tags "DataAccess"
-        }
-        catalog -> catalog_db "Читает и пишет собственные данные" "PostgreSQL/TCP" {
-            tags "DataAccess"
-        }
-        payments -> orders "PaymentSucceeded / PaymentFailed; очередь orders.payment-results" "AMQP 0-9-1 через RabbitMQ" {
-            tags "Async"
-        }
-        payments -> payments_db "Читает и пишет собственные данные" "PostgreSQL/TCP" {
-            tags "DataAccess"
-        }
-        notifications -> notifications_db "Читает и пишет собственные данные" "PostgreSQL/TCP" {
-            tags "DataAccess"
-        }
-
-        web -> psp "Переходит на страницу оплаты" "HTTPS, браузер"
-        payments -> psp "Создает платеж и сверяет его состояние" "HTTPS/JSON, синхронно"
-        psp -> payments "Отправляет подписанный webhook результата; асинхронно к созданию оплаты" "HTTPS callback"
-        notifications -> email "Отправляет письмо" "HTTPS API, синхронно"
+        buyer -> gateway "Каталог и свои заказы" "HTTP/JSON + JWT"
+        seller -> gateway "Свои товары и промокоды" "HTTP/JSON + JWT"
+        admin -> gateway "Управление товарами и заказами" "HTTP/JSON + JWT"
+        gateway -> users "Регистрация, вход, refresh" "gRPC / mTLS"
+        gateway -> catalog "CRUD и чтение товаров" "gRPC / mTLS"
+        gateway -> orders "Заказы и промокоды" "gRPC / mTLS"
+        catalog -> users "Проверяет продавца при назначении" "gRPC / mTLS"
+        orders -> catalog "Готовит резерв; исполняет решение" "gRPC / mTLS, 2PC"
+        users -> usersDB "Только данные Users" "SQL / pgx"
+        catalog -> catalogDB "Товары; PREPARE и COMMIT/ROLLBACK PREPARED" "SQL / pgx"
+        orders -> ordersDB "Заказы, скидки, журнал решений и prepared transaction" "SQL / pgx"
+        gateway -> business "Передаёт DTO и проверенную личность" "gRPC / mTLS"
+        business -> coordinator "Создать, обновить или отменить заказ" "Вызов Go"
+        business -> ordersDB "Читает заказы; меняет статус и промокоды" "SQL / pgx"
+        coordinator -> ordersDB "Session lock; бизнес-транзакция, решение и квитанция" "SQL / pgx"
+        coordinator -> catalog "Подготовка резерва и повторяемое завершение" "gRPC / mTLS"
+        recovery -> ordersDB "Незавершённые решения; неблокирующий session lock" "SQL / pgx"
+        recovery -> coordinator "Завершает COMMIT / ABORT" "Вызов Go"
     }
-
     views {
-        container marketplace "c4-container" "Сервисы, хранилища и взаимодействия маркетплейса." {
-            title "Маркетплейс — C4 Container (уровень 2)"
+        container marketplace "c4-container" "Реализация ДЗ 2: отдельно запущенные сервисы и их базы." {
             include *
             !script layout.groovy
             properties {
-                "structurizr.title" "false"
-                "structurizr.description" "false"
                 "structurizr.metadata" "false"
             }
         }
-
+        component orders "c4-components" "Заказ и резерв в двух базах: координация и восстановление." {
+            include gateway catalog business coordinator recovery ordersDB
+            !script components-layout.groovy
+            properties {
+                "structurizr.metadata" "false"
+            }
+        }
         styles {
             element "Element" {
                 shape RoundedBox
                 background #438DD5
                 color #FFFFFF
-                stroke #2465A1
                 fontSize 24
-                width 360
-                height 240
+                width 440
+                height 300
             }
             element "Person" {
                 shape Person
                 background #17456B
             }
-            element "External" {
-                background #64748B
-                stroke #475569
-            }
             element "Database" {
                 shape Cylinder
                 background #DCEBFA
                 color #15324F
-                stroke #438DD5
-                height 280
             }
             relationship "Relationship" {
                 color #475569
-                style solid
-                thickness 2
                 fontSize 22
-                width 320
-            }
-            relationship "Async" {
-                color #9333EA
-                style dashed
-            }
-            relationship "DataAccess" {
-                color #38708F
+                style solid
             }
         }
     }

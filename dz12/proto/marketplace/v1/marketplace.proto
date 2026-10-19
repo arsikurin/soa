@@ -1,0 +1,87 @@
+syntax = "proto3";
+package marketplace.v1;
+option go_package = "marketplace/internal/rpc/pb";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+message BusinessError {
+  string error_code = 1;
+  string message = 2;
+  int32 http_status = 3;
+  bytes details_json = 4;
+}
+message IDRequest { string id = 1; }
+message NullableString { optional string value = 1; }
+message RegisterRequest { string email = 1; string password = 2; optional string role = 3; }
+message LoginRequest { string email = 1; string password = 2; }
+message RefreshRequest { string refresh_token = 1; }
+message User {
+  string id = 1; string email = 2; string role = 3;
+  google.protobuf.Timestamp created_at = 4; google.protobuf.Timestamp updated_at = 5;
+}
+message TokenPair {
+  string access_token = 1; string refresh_token = 2; string token_type = 3; int32 expires_in = 4;
+}
+message RoleResponse { string role = 1; }
+service Users {
+  rpc Register(RegisterRequest) returns (User);
+  rpc Login(LoginRequest) returns (TokenPair);
+  rpc Refresh(RefreshRequest) returns (TokenPair);
+  rpc LookupRole(IDRequest) returns (RoleResponse);
+}
+message ProductWrite {
+  string name = 1; NullableString description = 2; string price = 3;
+  int32 stock = 4; string category = 5; string status = 6; optional string seller_id = 7;
+}
+message Product {
+  string id = 1; string name = 2; optional string description = 3; string price = 4;
+  int32 stock = 5; string category = 6; string status = 7; string seller_id = 8;
+  google.protobuf.Timestamp created_at = 9; google.protobuf.Timestamp updated_at = 10;
+}
+message ProductUpdateRequest { string id = 1; ProductWrite product = 2; }
+message ListProductsRequest {
+  optional int64 page = 1; optional int64 size = 2; optional string status = 3; optional string category = 4;
+}
+message ProductPage { repeated Product items = 1; int64 page = 2; int64 size = 3; int64 total_elements = 4; }
+message OrderItemRequest { string product_id = 1; int32 quantity = 2; }
+message OrderItem { string id = 1; string product_id = 2; int32 quantity = 3; string price_at_order = 4; }
+message PrepareReservationRequest {
+  string transaction_id = 1; repeated OrderItem old_items = 2; repeated OrderItemRequest new_items = 3;
+}
+message PrepareReservationResponse { repeated OrderItem items = 1; }
+message ResolveReservationRequest { string transaction_id = 1; bool commit = 2; }
+service Catalog {
+  rpc CreateProduct(ProductWrite) returns (Product);
+  rpc GetProduct(IDRequest) returns (Product);
+  rpc ListProducts(ListProductsRequest) returns (ProductPage);
+  rpc UpdateProduct(ProductUpdateRequest) returns (Product);
+  rpc DeleteProduct(IDRequest) returns (google.protobuf.Empty);
+  rpc PrepareReservation(PrepareReservationRequest) returns (PrepareReservationResponse);
+  rpc ResolveReservation(ResolveReservationRequest) returns (google.protobuf.Empty);
+}
+message OrderCreateRequest { repeated OrderItemRequest items = 1; optional string promo_code = 2; }
+message OrderUpdateRequest { string id = 1; repeated OrderItemRequest items = 2; }
+message OrderStatusRequest { string id = 1; string status = 2; }
+message Order {
+  string id = 1; string user_id = 2; string status = 3; string total_amount = 4; string discount_amount = 5;
+  optional string promo_code_id = 6; repeated OrderItem items = 7;
+  google.protobuf.Timestamp created_at = 8; google.protobuf.Timestamp updated_at = 9;
+}
+message PromoCodeCreateRequest {
+  string code = 1; string discount_type = 2; string discount_value = 3; string min_order_amount = 4;
+  int32 max_uses = 5; google.protobuf.Timestamp valid_from = 6; google.protobuf.Timestamp valid_until = 7; bool active = 8;
+}
+message PromoCode {
+  string id = 1; string code = 2; string discount_type = 3; string discount_value = 4; string min_order_amount = 5;
+  int32 max_uses = 6; google.protobuf.Timestamp valid_from = 7; google.protobuf.Timestamp valid_until = 8;
+  bool active = 9; int32 current_uses = 10; google.protobuf.Timestamp created_at = 11; google.protobuf.Timestamp updated_at = 12;
+}
+service Orders {
+  rpc CreateOrder(OrderCreateRequest) returns (Order);
+  rpc GetOrder(IDRequest) returns (Order);
+  rpc UpdateOrder(OrderUpdateRequest) returns (Order);
+  rpc CancelOrder(IDRequest) returns (Order);
+  rpc ChangeOrderStatus(OrderStatusRequest) returns (Order);
+  rpc CreatePromoCode(PromoCodeCreateRequest) returns (PromoCode);
+}
