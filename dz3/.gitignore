@@ -1,0 +1,5 @@
+.env
+/bin/
+/docs/local/
+/internal/api/oas_*_gen.go
+/internal/rpc/pb/

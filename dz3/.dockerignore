@@ -1,0 +1,14 @@
+*
+!go.mod
+!go.sum
+!api/
+!api/**
+!proto/
+!proto/**
+!internal/
+!internal/**
+!cmd/
+!cmd/**
+internal/api/oas_*_gen.go
+internal/rpc/pb/
+**/*_test.go

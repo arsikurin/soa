@@ -1,0 +1,372 @@
+openapi: 3.0.3
+info:
+  title: Flight Booking
+  version: 1.0.0
+  description: Prices are decimal strings in RUB. Search dates use UTC. Flight reservations use recoverable compensation;
+    503 OPERATION_PENDING reports an unresolved operation. Client identity is user_id supplied by the caller; public
+    user authentication is outside this assignment.
+servers:
+- url: http://localhost:8090
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        default:
+          description: INVALID_ARGUMENT 400; NOT_FOUND 404; ALREADY_EXISTS/FAILED_PRECONDITION/RESOURCE_EXHAUSTED/ABORTED
+            409; CANCELLED 408; CIRCUIT_OPEN/OPERATION_PENDING/UNAVAILABLE/DEADLINE_EXCEEDED/SERVICE_AUTH_FAILED
+            503; INTERNAL 500. OPERATION_PENDING
+            includes booking_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /flights:
+    get:
+      operationId: searchFlights
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightList'
+        default:
+          description: INVALID_ARGUMENT 400; NOT_FOUND 404; ALREADY_EXISTS/FAILED_PRECONDITION/RESOURCE_EXHAUSTED/ABORTED
+            409; CANCELLED 408; CIRCUIT_OPEN/OPERATION_PENDING/UNAVAILABLE/DEADLINE_EXCEEDED/SERVICE_AUTH_FAILED
+            503; INTERNAL 500. OPERATION_PENDING
+            includes booking_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: origin
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+      - name: destination
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Z]{3}$
+      - name: date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+  /flights/{id}:
+    get:
+      operationId: getFlight
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flight'
+        default:
+          description: INVALID_ARGUMENT 400; NOT_FOUND 404; ALREADY_EXISTS/FAILED_PRECONDITION/RESOURCE_EXHAUSTED/ABORTED
+            409; CANCELLED 408; CIRCUIT_OPEN/OPERATION_PENDING/UNAVAILABLE/DEADLINE_EXCEEDED/SERVICE_AUTH_FAILED
+            503; INTERNAL 500. OPERATION_PENDING
+            includes booking_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /bookings:
+    post:
+      operationId: createBooking
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        default:
+          description: INVALID_ARGUMENT 400; NOT_FOUND 404; ALREADY_EXISTS/FAILED_PRECONDITION/RESOURCE_EXHAUSTED/ABORTED
+            409; CANCELLED 408; CIRCUIT_OPEN/OPERATION_PENDING/UNAVAILABLE/DEADLINE_EXCEEDED/SERVICE_AUTH_FAILED
+            503; INTERNAL 500. OPERATION_PENDING
+            includes booking_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreate'
+      description: A stable Idempotency-Key UUID identifies one booking attempt. Reuse it after a lost response.
+        A conflicting payload returns 409. A failed creation is compensated; a pending operation returns 503 with
+        booking_id.
+    get:
+      operationId: listBookings
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingList'
+        default:
+          description: INVALID_ARGUMENT 400; NOT_FOUND 404; ALREADY_EXISTS/FAILED_PRECONDITION/RESOURCE_EXHAUSTED/ABORTED
+            409; CANCELLED 408; CIRCUIT_OPEN/OPERATION_PENDING/UNAVAILABLE/DEADLINE_EXCEEDED/SERVICE_AUTH_FAILED
+            503; INTERNAL 500. OPERATION_PENDING
+            includes booking_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: user_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /bookings/{id}:
+    get:
+      operationId: getBooking
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        default:
+          description: INVALID_ARGUMENT 400; NOT_FOUND 404; ALREADY_EXISTS/FAILED_PRECONDITION/RESOURCE_EXHAUSTED/ABORTED
+            409; CANCELLED 408; CIRCUIT_OPEN/OPERATION_PENDING/UNAVAILABLE/DEADLINE_EXCEEDED/SERVICE_AUTH_FAILED
+            503; INTERNAL 500. OPERATION_PENDING
+            includes booking_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /bookings/{id}/cancel:
+    post:
+      operationId: cancelBooking
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        default:
+          description: INVALID_ARGUMENT 400; NOT_FOUND 404; ALREADY_EXISTS/FAILED_PRECONDITION/RESOURCE_EXHAUSTED/ABORTED
+            409; CANCELLED 408; CIRCUIT_OPEN/OPERATION_PENDING/UNAVAILABLE/DEADLINE_EXCEEDED/SERVICE_AUTH_FAILED
+            503; INTERNAL 500. OPERATION_PENDING
+            includes booking_id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      description: Repeated cancellation is idempotent. If the remote result is unknown, recovery retries release
+        and finalizes CANCELLED.
+components:
+  schemas:
+    Flight:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - flight_number
+      - airline
+      - origin
+      - destination
+      - departure_at
+      - arrival_at
+      - total_seats
+      - available_seats
+      - price
+      - currency
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        flight_number:
+          type: string
+        airline:
+          type: string
+        origin:
+          type: string
+        destination:
+          type: string
+        departure_at:
+          type: string
+          format: date-time
+        arrival_at:
+          type: string
+          format: date-time
+        total_seats:
+          type: integer
+        available_seats:
+          type: integer
+        price:
+          type: string
+          pattern: ^\d+\.\d{2}$
+          example: '1250.00'
+        currency:
+          type: string
+          enum:
+          - RUB
+        status:
+          type: string
+          enum:
+          - SCHEDULED
+          - DEPARTED
+          - CANCELLED
+          - COMPLETED
+    FlightList:
+      type: array
+      items:
+        $ref: '#/components/schemas/Flight'
+    Booking:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - user_id
+      - flight_id
+      - passenger_name
+      - passenger_email
+      - seat_count
+      - total_price
+      - currency
+      - status
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        flight_id:
+          type: string
+          format: uuid
+        passenger_name:
+          type: string
+        passenger_email:
+          type: string
+        seat_count:
+          type: integer
+        total_price:
+          type: string
+          pattern: ^\d+\.\d{2}$
+        currency:
+          type: string
+          enum:
+          - RUB
+        status:
+          type: string
+          enum:
+          - CONFIRMED
+          - CANCELLED
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    BookingList:
+      type: array
+      items:
+        $ref: '#/components/schemas/Booking'
+    BookingCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - user_id
+      - flight_id
+      - passenger_name
+      - passenger_email
+      - seat_count
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        flight_id:
+          type: string
+          format: uuid
+        passenger_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: ^[^\x00]*\S[^\x00]*$
+        passenger_email:
+          type: string
+          format: email
+          maxLength: 254
+        seat_count:
+          type: integer
+          minimum: 1
+          maximum: 999
+    Error:
+      type: object
+      additionalProperties: false
+      required:
+      - error_code
+      - message
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        booking_id:
+          type: string
+          format: uuid
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - ok

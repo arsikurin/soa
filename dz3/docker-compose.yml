@@ -1,0 +1,259 @@
+name: flight-booking-homework
+services:
+  flight-db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: flight
+      POSTGRES_USER: flight
+      POSTGRES_PASSWORD: flight
+    ports:
+    - 127.0.0.1:${FLIGHT_POSTGRES_PORT:-55431}:5432
+    volumes:
+    - flight-data:/var/lib/postgresql
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U flight -d flight
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  flight-migrate:
+    image: redgate/flyway:13.10.0
+    platform: linux/amd64
+    depends_on:
+      flight-db:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://flight-db:5432/flight
+      FLYWAY_USER: flight
+      FLYWAY_PASSWORD: flight
+      FLYWAY_CONNECT_RETRIES: '30'
+      FLYWAY_CLEAN_DISABLED: 'true'
+    volumes:
+    - ./migrations/flight:/flyway/sql:ro
+    command:
+    - migrate
+  booking-db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: booking
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: booking
+    ports:
+    - 127.0.0.1:${BOOKING_POSTGRES_PORT:-55432}:5432
+    volumes:
+    - booking-data:/var/lib/postgresql
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U booking -d booking
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  booking-migrate:
+    image: redgate/flyway:13.10.0
+    platform: linux/amd64
+    depends_on:
+      booking-db:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://booking-db:5432/booking
+      FLYWAY_USER: booking
+      FLYWAY_PASSWORD: booking
+      FLYWAY_CONNECT_RETRIES: '30'
+      FLYWAY_CLEAN_DISABLED: 'true'
+    volumes:
+    - ./migrations/booking:/flyway/sql:ro
+    command:
+    - migrate
+  redis-a:
+    image: redis:8.2-alpine
+    hostname: redis-a
+    command:
+    - sh
+    - /bootstrap/redis.sh
+    volumes:
+    - redis-a-data:/data
+    - ./deploy/redis.sh:/bootstrap/redis.sh:ro
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  redis-b:
+    image: redis:8.2-alpine
+    hostname: redis-b
+    command:
+    - sh
+    - /bootstrap/redis.sh
+    volumes:
+    - redis-b-data:/data
+    - ./deploy/redis.sh:/bootstrap/redis.sh:ro
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    depends_on:
+      redis-a:
+        condition: service_healthy
+  sentinel-1:
+    image: redis:8.2-alpine
+    hostname: sentinel-1
+    command:
+    - sh
+    - /bootstrap/sentinel.sh
+    volumes:
+    - sentinel-1-data:/data
+    - ./deploy/sentinel.sh:/bootstrap/sentinel.sh:ro
+    depends_on:
+      redis-a:
+        condition: service_healthy
+      redis-b:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - -p
+      - '26379'
+      - ping
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  sentinel-2:
+    image: redis:8.2-alpine
+    hostname: sentinel-2
+    command:
+    - sh
+    - /bootstrap/sentinel.sh
+    volumes:
+    - sentinel-2-data:/data
+    - ./deploy/sentinel.sh:/bootstrap/sentinel.sh:ro
+    depends_on:
+      redis-a:
+        condition: service_healthy
+      redis-b:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - -p
+      - '26379'
+      - ping
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  sentinel-3:
+    image: redis:8.2-alpine
+    hostname: sentinel-3
+    command:
+    - sh
+    - /bootstrap/sentinel.sh
+    volumes:
+    - sentinel-3-data:/data
+    - ./deploy/sentinel.sh:/bootstrap/sentinel.sh:ro
+    depends_on:
+      redis-a:
+        condition: service_healthy
+      redis-b:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - -p
+      - '26379'
+      - ping
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  flight:
+    image: flight-booking:local
+    build: .
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    stop_grace_period: 10s
+    command:
+    - flight
+    environment:
+      DATABASE_URL: postgres://flight:flight@flight-db:5432/flight?sslmode=disable
+      FLIGHT_API_KEY: ${FLIGHT_API_KEY:-homework-flight-service-key-change-me}
+      GRPC_ADDR: :50051
+      REDIS_SENTINELS: sentinel-1:26379,sentinel-2:26379,sentinel-3:26379
+      REDIS_MASTER: flight-cache
+      CACHE_TTL: ${CACHE_TTL:-5m}
+    ports:
+    - 127.0.0.1:${FLIGHT_GRPC_PORT:-50061}:50051
+    depends_on:
+      flight-migrate:
+        condition: service_completed_successfully
+      sentinel-1:
+        condition: service_started
+      sentinel-2:
+        condition: service_started
+      sentinel-3:
+        condition: service_started
+    healthcheck:
+      test:
+      - CMD
+      - flight
+      - healthcheck
+      interval: 3s
+      timeout: 2s
+      retries: 30
+  booking:
+    image: flight-booking:local
+    build: .
+    read_only: true
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    stop_grace_period: 10s
+    command:
+    - booking
+    environment:
+      DATABASE_URL: postgres://booking:booking@booking-db:5432/booking?sslmode=disable
+      HTTP_ADDR: :8090
+      FLIGHT_ADDR: flight:50051
+      FLIGHT_API_KEY: ${FLIGHT_API_KEY:-homework-flight-service-key-change-me}
+      GRPC_ATTEMPT_TIMEOUT: ${GRPC_ATTEMPT_TIMEOUT:-2s}
+      GRPC_INITIAL_BACKOFF: ${GRPC_INITIAL_BACKOFF:-100ms}
+      CIRCUIT_FAILURE_THRESHOLD: ${CIRCUIT_FAILURE_THRESHOLD:-5}
+      CIRCUIT_FAILURE_WINDOW: ${CIRCUIT_FAILURE_WINDOW:-30s}
+      CIRCUIT_OPEN_TIMEOUT: ${CIRCUIT_OPEN_TIMEOUT:-15s}
+      RECOVERY_INTERVAL: ${RECOVERY_INTERVAL:-1s}
+    ports:
+    - 127.0.0.1:${BOOKING_PORT:-8090}:8090
+    depends_on:
+      booking-migrate:
+        condition: service_completed_successfully
+      flight:
+        condition: service_healthy
+    healthcheck:
+      test:
+      - CMD
+      - booking
+      - healthcheck
+      interval: 3s
+      timeout: 2s
+      retries: 30
+volumes:
+  flight-data: {}
+  booking-data: {}
+  redis-a-data: {}
+  redis-b-data: {}
+  sentinel-1-data: {}
+  sentinel-2-data: {}
+  sentinel-3-data: {}
