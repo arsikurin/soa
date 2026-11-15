@@ -1,0 +1,33 @@
+@startuml
+title Temporal · подтверждение по push
+hide footbox
+skinparam backgroundColor #FFFFFF
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 185
+skinparam ParticipantPadding 10
+skinparam BoxPadding 8
+participant "Банк" as bank
+participant "API" as api
+database "Журнал" as db
+participant "Диспетчер" as relay
+participant "Temporal" as t
+participant "Исполнитель" as w
+participant "Push" as push
+participant "Приложение" as app
+bank -> api : Событие списания, ключ
+api -> db : Принять уведомление и записать команду запуска
+api --> bank : Номер после commit
+relay -> db : Взять команду
+relay -> t : Запустить процесс с ID уведомления
+w -> t : Получить задачу отправки
+w -> db : Зарегистрировать попытку, проверить статус
+w -> w : Проверить контакт
+w -> push : Отправить push с ключом
+w -> t : Ожидать сигнал или таймер
+push -> app : Подтверждение списания
+app -> api : Квитанция о получении
+api -> db : Закрыть доставку, записать команду сигнала
+relay -> t : Передать сигнал доставки
+t -> w : Продолжить процесс по сигналу
+w -> t : Завершить процесс
+@enduml

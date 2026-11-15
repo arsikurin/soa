@@ -1,0 +1,26 @@
+@startuml
+title PostgreSQL · push без квитанции
+hide footbox
+skinparam backgroundColor #FFFFFF
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 185
+skinparam ParticipantPadding 10
+skinparam BoxPadding 8
+participant "API" as api
+database "Журнал" as db
+participant "Отправитель" as w
+participant "Push" as push
+participant "SMS" as sms
+note over db,push : Push отправлен. Срок ожидания истек через 5 с.
+w -> db : Забрать просроченное задание
+w -> push : Запросить статус попытки
+push --> w : Доставка неизвестна
+w -> db : Проверить версию, записать ключ SMS
+w -> w : Проверить номер и разрешение
+w -> sms : Отправить SMS
+sms -> api : Доставлено на телефон
+api -> db : Сохранить квитанцию, закрыть доставку
+opt Поздняя квитанция от приложения
+  api -> db : Учесть второй канал, сохранить конечный статус
+end
+@enduml

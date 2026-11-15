@@ -1,0 +1,28 @@
+@startuml
+!include <C4/C4_Container>
+title Маршрут в Temporal · критичная доставка
+Person(customer, "Клиент банка", "Настраивает каналы, получает сообщения")
+System_Ext(bank, "Сервисы банка", "Переводы и списания")
+System_Ext(profile, "Профиль клиента", "Согласия и проверенные контакты")
+System_Ext(gateway, "Каналы доставки", "Push, SMS и email")
+System_Boundary(platform, "Платформа уведомлений") {
+  Container(api, "API уведомлений", "HTTP", "Принимает события и квитанции")
+  ContainerDb(ledger, "Журнал доставки", "PostgreSQL", "Уведомления, попытки, квитанции и outbox")
+  Container(relay, "Диспетчер", "Go", "Передает команды из outbox")
+  Container(engine, "Оркестратор", "Temporal Service", "Очереди, история и таймеры")
+  ContainerDb(history, "Хранилище Temporal", "PostgreSQL", "История процессов и задачи")
+  Container(worker, "Исполнители", "Temporal Go SDK", "Исполняют процессы и отправляют через Activity")
+}
+Rel(bank, api, "Передает событие", "HTTPS")
+Rel(api, ledger, "Фиксирует прием и квитанции", "SQL")
+Rel(relay, ledger, "Читает outbox", "SQL")
+Rel(relay, engine, "Запускает процесс, шлет сигнал", "gRPC")
+Rel(engine, history, "Сохраняет шаги", "SQL")
+Rel(worker, engine, "Забирает и завершает задачи", "gRPC")
+Rel(worker, ledger, "Сверяет статус, пишет попытки", "SQL")
+Rel(worker, profile, "Проверяет контакт", "HTTPS")
+Rel(worker, gateway, "Отправляет, сверяет статус", "HTTPS")
+Rel(gateway, api, "Возвращает квитанции", "HTTPS")
+Rel(gateway, customer, "Доставляет сообщение")
+Rel(customer, api, "Подтверждает push или email", "HTTPS")
+@enduml

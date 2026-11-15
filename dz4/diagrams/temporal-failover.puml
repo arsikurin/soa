@@ -1,0 +1,30 @@
+@startuml
+title Temporal · переход на SMS по таймеру
+hide footbox
+skinparam backgroundColor #FFFFFF
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 185
+skinparam ParticipantPadding 10
+skinparam BoxPadding 8
+participant "API" as api
+database "Журнал" as db
+participant "Диспетчер" as relay
+participant "Temporal" as t
+participant "Исполнитель" as w
+participant "Каналы" as chan
+note over t,chan : Нет квитанции push через 5 с
+t -> w : Таймер истек, продолжить процесс
+w -> chan : Запросить статус push
+chan --> w : Доставка неизвестна
+w -> db : Проверить статус и записать ключ попытки SMS
+w -> w : Проверить контакт
+w -> chan : Отправить SMS с ключом
+chan -> api : Квитанция SMS с телефона через оператора
+api -> db : Закрыть доставку, сохранить команду сигнала
+relay -> t : Сигнал о доставке
+t -> w : Продолжить процесс
+w -> t : Завершить процесс
+opt Поздний push после завершения
+  api -> db : Учесть второй канал в журнале
+end
+@enduml
